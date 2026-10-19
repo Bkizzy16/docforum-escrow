@@ -65,6 +65,26 @@ done and verified live on testnet; E2 (release/refund) is the current open work.
   tests and a `changeset` entry (see [Releasing the SDK](@#releasing-the-sdk)).
   Strict semver applies to the SDK.
 
+### Contract mutation testing
+
+Mutation testing checks whether the escrow contract tests fail when
+`contracts/escrow/src/lib.rs` is changed in small, deliberate ways. Install
+the pinned tool version and run it from the contract crate:
+
+```bash
+cargo install --locked cargo-mutants --version 27.1.0
+cd contracts/escrow
+cargo mutants
+```
+
+The checked-in `contracts/escrow/.cargo/mutants.toml` limits mutations to
+the production contract file and gives each build/test run a bounded
+timeout. Test-only mocks and fixtures under `tests/` are excluded from the
+mutation set. A surviving mutant means the tests did not detect that
+change; add a focused regression test or document why the mutant is
+equivalent. The nightly GitHub Actions run uploads its `mutants.out`
+report as an artifact and fails when any mutant survives.
+
 ## 4. Opening the PR
 
 - Branch off `main`.

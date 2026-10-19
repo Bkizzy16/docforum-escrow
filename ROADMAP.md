@@ -149,6 +149,13 @@
   the release workflow) — documented in `CONTRIBUTING.md`; not yet done,
   so `sdk-v0.3.0` is not yet published to npm.
 
+## Phase E7 — Verification, testing & release engineering
+- [ ] Mutation testing for `contracts/escrow/src/lib.rs` (issue #104):
+  `.cargo/mutants.toml` scopes mutations to production contract code;
+  nightly workflow and contributor instructions are in place. Initial and
+  final mutation scores, plus any surviving-mutant dispositions, remain to
+  be recorded after a complete cargo-mutants run.
+
 ## Explicitly out of scope for this repo
 - Any healthcare-specific logic (see README).
 - Fiat on/off-ramp, KYC — that's `docforum-core`'s concern if/when it
@@ -156,6 +163,11 @@
   repo's.
 
 ## Changelog
+- 2026-10-19 — Issue #104: added a contract-only cargo-mutants config,
+  nightly mutation workflow, and local contributor instructions. The
+  mutation tool download stalled in this environment, so baseline/final
+  scores and survivor review are pending; Phase E7 remains unchecked until
+  those measurements are recorded.
 - 2026-10-16 — Implemented the immutable deploy-time token allowlist for
   issue #36. Contract tests/docs updated; awaiting a new testnet deployment
   before claiming the protection is live.
