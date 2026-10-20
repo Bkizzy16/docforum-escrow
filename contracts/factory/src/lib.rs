@@ -2,6 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, xdr::ToXdr, Address, BytesN, Env, Symbol,
+    Vec,
 };
 
 #[contracttype]
@@ -51,10 +52,10 @@ impl EscrowFactory {
             .instance()
             .get(&DataKey::EscrowWasmHash)
             .expect("escrow WASM hash is initialized by the constructor");
-        let instance = env
-            .deployer()
-            .with_current_contract(salt)
-            .deploy_v2(wasm_hash, (integrator.clone(),));
+        let instance = env.deployer().with_current_contract(salt).deploy_v2(
+            wasm_hash,
+            (Vec::<Address>::new(&env), Some(integrator.clone())),
+        );
 
         env.storage().persistent().set(&registry_key, &instance);
         Ok(instance)

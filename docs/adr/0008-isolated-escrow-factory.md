@@ -1,4 +1,4 @@
-# ADR 0005: Deterministic Isolated Escrow Instances
+# ADR 0008: Deterministic Isolated Escrow Instances
 
 **Status:** Accepted for Phase E5 implementation; testnet deployment remains
 out of scope until the Phase E4 security-review gate is complete.

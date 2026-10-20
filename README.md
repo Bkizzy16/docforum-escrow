@@ -38,16 +38,24 @@ Two reasons, stated plainly rather than blended together:
 
 ## Contract surface
 
+The deploy-time `__constructor(allowed_tokens, integrator)` stores an immutable
+token allowlist and optional non-privileged integrator metadata. Pass the token
+addresses the deployment accepts; an empty list keeps the legacy open-token
+behavior. This policy cannot be changed after deployment, so choosing an empty
+list deliberately disables the protection.
+
 | Function | Status | Description |
 |---|---|---|
-| `create_escrow(payer, payee, token, amount, condition_ref, releaser, refund_after) -> escrow_id` | ✅ Implemented | Pulls `amount` of `token` from `payer` (requires `payer` auth), stores an opaque `condition_ref`, sets status `Funded`. Rejects non-positive amounts, and any `refund_after` that isn't strictly in the future. |
+| `__constructor(allowed_tokens, integrator)` | ✅ Implemented | Stores the immutable deploy-time token allowlist and optional integrator metadata; an empty list allows all tokens. |
+| `create_escrow(payer, payee, token, amount, condition_ref, releaser, refund_after, notify_payee) -> escrow_id` | ✅ Implemented locally (callback not deployed) | Pulls funds from `payer`, stores a bounded `condition_ref`, and stores the single `releaser` as a one-address set with threshold 1. Requires payer auth; when `notify_payee` is true, also requires payee auth and calls `on_escrow_released` on release. |
+| `create_escrow_with_releasers(payer, payee, token, amount, condition_ref, releasers, threshold, refund_after, notify_payee) -> escrow_id` | ✅ Implemented | Same, but settles by M-of-N: 1–10 distinct `releasers` (`MAX_RELEASERS`), `1 <= threshold <= releasers.len()`. Callback opt-in has the same payee-authorization requirement. See [ADR 0007](docs/adr/0007-in-contract-m-of-n-releaser-quorum.md). |
 | `get_status(escrow_id) -> EscrowStatus` | ✅ Implemented | Read-only. Errors on an unknown id. |
-| `get_escrow(escrow_id) -> EscrowData` | ✅ Implemented | Read-only: everything stored about the escrow, including `releaser` and `refund_after`, so payees can check the deal before relying on it. |
-| `release(escrow_id, caller) -> Result<()>` | ✅ Implemented | Restricted to the escrow's designated `releaser`; moves funds to `payee`. Never gated by `refund_after`. |
-| `refund(escrow_id, caller) -> Result<()>` | ✅ Implemented | Returns funds to `payer`. The `releaser` may always call it; once `refund_after` has passed, anyone may — still only back to `payer` (see [ADR 0004](docs/adr/0004-timeout-refund-path.md)). |
-| `EscrowFactory.create_instance(integrator)` | ✅ Implemented | Deploys the pinned escrow WASM with a deterministic per-integrator salt and records the address; one instance per integrator. |
-| `EscrowFactory.predict_instance(integrator)` | ✅ Implemented | Returns the child address derived from the same factory-scoped salt, before deployment. |
-| `EscrowFactory.get_instance(integrator)` | ✅ Implemented | Read-only registry lookup; returns `None` before deployment. |
+| `get_escrow(escrow_id) -> EscrowData` | ✅ Implemented | Read-only: everything stored about the escrow, including `releasers`, `threshold` and `refund_after`, so payees can check the deal before relying on it. |
+| `release(escrow_id, caller) -> Result<()>` | ✅ Implemented | Restricted to the escrow's designated `releaser` when the threshold is 1; moves funds to `payee`. Never gated by `refund_after`. |
+| `release_with_approvals(escrow_id, approvers) -> Result<()>` | ✅ Implemented | M-of-N release: at least `threshold` distinct releasers, each authorizing this exact invocation. Approvals are not stored, so nothing can be replayed. Only while `Funded`. |
+| `refund(escrow_id, caller) -> Result<()>` | ✅ Implemented | Returns funds to `payer`. The `releaser` may always call it (threshold 1); once `refund_after` has passed, anyone may — still only back to `payer` (see [ADR 0004](docs/adr/0004-timeout-refund-path.md)). |
+| `refund_with_approvals(escrow_id, approvers) -> Result<()>` | ✅ Implemented | M-of-N refund with the same approval rules; the timeout path above needs no approvals. |
+| `top_up(escrow_id, payer, amount) -> Result<()>` | ✅ Implemented | Adds funds to a `Funded` escrow; original payer only. Emits a `top_up` event. |
 
 ```
 EscrowStatus = Funded | Released | Refunded
@@ -60,18 +68,30 @@ T2): instead of locking funds permanently, a deadline lets anyone return
 them to the payer. See [ADR 0004](docs/adr/0004-timeout-refund-path.md)
 for the decision and what it means for payees.
 
-The Phase E5 factory pins an escrow WASM hash at construction and deploys
-one instance per integrator. Each instance receives its integrator identifier
-in the constructor as non-privileged metadata. The factory has no method to
-call, administer, or upgrade deployed instances; each child has independent
-escrow storage and token balances. See
-[ADR 0005](docs/adr/0005-isolated-escrow-factory.md).
+Single-releaser escrows are unchanged by the M-of-N option: `create_escrow`
+stores the one address with `threshold = 1`, `release`/`refund` behave exactly
+as before, and the approval entry points simply accept that one address too.
+No new admin, owner, pause or upgrade role exists — `releasers` is escrow data
+chosen by the payer, not authority over the contract (see
+[ADR 0006](docs/adr/0006-openzeppelin-stellar-library-evaluation.md) for why
+OpenZeppelin's pause/upgradeable/access modules are deliberately **not**
+adopted).
+
+`EscrowFactory` pins an escrow WASM hash and deploys one deterministic escrow
+instance for each authorized integrator. Its registry exposes lookup and
+address prediction, and each child stores the integrator only as informational
+metadata. The factory cannot administer or upgrade deployed instances. See
+[ADR 0008](docs/adr/0008-isolated-escrow-factory.md).
 
 **Design rule, enforced deliberately:** the contract decides **who** may
 call `release`/`refund`, never **why**. `condition_ref` is an opaque
 string the contract stores but never interprets — all domain
 interpretation (what counts as "fulfilled," who's authorized to attest to
-it) is the consuming application's job. See
+it) is the consuming application's job. The contract bounds `condition_ref`
+to 64 bytes at creation (error 7, `ConditionRefTooLong`) to keep storage
+and event costs predictable (threat model T10, Phase E5); the SDK
+validates the same bound client-side via `MAX_CONDITION_REF_LENGTH`.
+See
 [ADR 0001](docs/adr/0001-generic-escrow-not-healthcare-specific.md).
 
 ## How it's used
@@ -99,18 +119,22 @@ repo never crosses back into `docforum-core`'s database or domain model.
 
 ```
 contracts/
-  Cargo.toml        Workspace for escrow + factory
+  Cargo.toml             Workspace for escrow and factory contracts
   escrow/
-    src/lib.rs      Contract implementation
-    tests/          Contract integration tests
+    src/lib.rs           Contract implementation
+    tests/               Contract integration tests (soroban-sdk testutils)
   factory/
-    src/lib.rs      Deterministic per-integrator factory
-    tests/          Factory deployment and pool-isolation tests
+    src/lib.rs           Deterministic per-integrator factory
+    tests/               Factory registry and instance-isolation tests
 sdk/
-  src/index.ts      @docforum/escrow-sdk — TypeScript client (not yet implemented, see issue #4)
+  src/index.ts           @docforum/escrow-sdk — hand-written public surface
+  src/generated/         Machine-generated contract bindings — never hand-edit (issue #121)
   package.json
-docs/adr/           Architecture decision records
-.github/            CI workflow, issue/PR templates
+scripts/
+  check-generated-bindings.sh   CI/regeneration check for the generated bindings
+  stellar-cli-version           Pinned generator version (+ release checksum)
+docs/adr/                Architecture decision records
+.github/                 CI workflow, issue/PR templates
 ```
 
 ## Getting started
@@ -119,14 +143,16 @@ Requires a Rust toolchain with the `wasm32v1-none` target.
 
 ```bash
 git clone https://github.com/DocForum/docforum-escrow.git
-cd docforum-escrow
+cd docforum-escrow/contracts
 
-# Build the escrow WASM first; the factory integration suite deploys this artifact.
-cargo build --manifest-path Cargo.toml -p docforum-escrow --target wasm32v1-none --release
+# Run the test suite (57 tests, all passing today; also writes the
+# committed test_snapshots/ files — see CONTRIBUTING.md)
+cargo test --workspace
 
-# Test both contracts and build the factory WASM.
-cargo test --manifest-path Cargo.toml --workspace
-cargo build --manifest-path Cargo.toml -p docforum-escrow-factory --target wasm32v1-none --release
+# Build the deployable contract
+cargo build -p docforum-escrow --target wasm32v1-none --release
+cargo build -p docforum-escrow-factory --target wasm32v1-none --release
+# → target/wasm32v1-none/release/docforum_escrow{,_factory}.wasm
 ```
 
 Already deployed to Stellar **testnet** — see
@@ -135,25 +161,57 @@ contract id, transaction links, and the exact `stellar` CLI commands to
 redeploy. **Mainnet is out of scope until the Phase E4 security review is
 complete — see [hard rule 4](ARCHITECTURE_ESSENTIALS.md#hard-rules).**
 
-The TypeScript SDK (`sdk/`) is still a placeholder — see
-[issue #4](https://github.com/DocForum/docforum-escrow/issues/4).
+The SDK supports relayed release/refund calls. `authorizeRelease` and
+`authorizeRefund` simulate the invocation, ask the releaser to sign only
+its short-lived contract authorization entry, and return a serialized
+transaction. `submitRelayed` restores that transaction and lets a separate
+relayer sign the envelope and pay its fee. The auth entry is bound to the
+simulated invocation and expires after ten ledgers:
+
+```ts
+const authorization = await client.authorizeRelease({ escrowId, releaser, relayer });
+const { txHash } = await client.submitRelayed("release", authorization, relayer);
+```
+
+Keep the serialized authorization private until submission and do not
+retry it after its expiration ledger.
+
+An escrow created with `createQuorumEscrow` settles with M-of-N approvals;
+each supplied keypair signs only the contract auth entry for that one call, and
+the first pays the fee:
+
+```ts
+const { escrowId } = await client.createQuorumEscrow({
+  payer, payee, token, amount, conditionRef,
+  releasers: [a, b, c],
+  threshold: 2,
+});
+await client.releaseWithApprovals({ escrowId, approvers: [a, c] });
+```
 
 ## Documentation
 
 | Doc | Purpose |
 |---|---|
 | [`ARCHITECTURE_ESSENTIALS.md`](ARCHITECTURE_ESSENTIALS.md) | Stack, contract surface, hard rules (no PHI ever, tests required for contract changes, testnet-only until security review). |
-| [`ROADMAP.md`](ROADMAP.md) | Phase E1–E5 breakdown and current status. |
+| [`ROADMAP.md`](ROADMAP.md) | Phase breakdown and current status. |
 | [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) | Rules for coding agents working in this repo — read `README.md` + `ARCHITECTURE_ESSENTIALS.md` first; you should rarely need `docforum-core`'s docs to work here. |
 | [`docs/adr/0001-generic-escrow-not-healthcare-specific.md`](docs/adr/0001-generic-escrow-not-healthcare-specific.md) | Why the contract stays domain-blind. |
-| [`docs/adr/0005-isolated-escrow-factory.md`](docs/adr/0005-isolated-escrow-factory.md) | Factory identity, deterministic deployment, registry, and isolation boundaries. |
 
 ## Project status
 
 **Phase E1 (contract skeleton): done.** `create_escrow` and `get_status`
 are implemented, tested, and deployed live on testnet — not just locally
 tested. Phases E2 (release/refund), E3 (TypeScript SDK), and E4 (security
-review, blocking for any mainnet use) are tracked as open issues:
+review, blocking for any mainnet use) are tracked as open issues. Phase E5
+now also includes an optional in-contract M-of-N releaser quorum
+([ADR 0007](docs/adr/0007-in-contract-m-of-n-releaser-quorum.md)) and a
+documented decision **not** to adopt OpenZeppelin's pause/upgradeable/access
+modules ([ADR 0006](docs/adr/0006-openzeppelin-stellar-library-evaluation.md));
+both are implemented and tested but **not yet redeployed to testnet** (see
+[`docs/testnet-deployments.md`](docs/testnet-deployments.md)). Phase E7 adds
+committed contract test snapshots (issue #120) and a CI check that the
+generated SDK bindings match the contract WASM (issue #121):
 
 | Issue | Phase | Complexity |
 |---|---|---|
