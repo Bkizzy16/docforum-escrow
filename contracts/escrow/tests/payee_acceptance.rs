@@ -26,7 +26,7 @@ fn setup(env: &Env) -> Fixture<'_> {
     let payee = Address::generate(env);
     let releaser = Address::generate(env);
     asset.mint(&payer, &500);
-    let contract_id = env.register(EscrowContract, (soroban_sdk::Vec::<Address>::new(env),));
+    let contract_id = env.register(EscrowContract, (soroban_sdk::Vec::<Address>::new(env), None::<Address>));
     let client = EscrowContractClient::new(env, &contract_id);
     let id = client.create_escrow_with_acceptance(
         &payer,
@@ -37,6 +37,7 @@ fn setup(env: &Env) -> Fixture<'_> {
         &releaser,
         &None,
         &true,
+        &None,
     );
     Fixture {
         client,
@@ -88,7 +89,7 @@ fn legacy_creation_keeps_acceptance_opt_out() {
     let payee = Address::generate(&env);
     let releaser = Address::generate(&env);
     StellarAssetClient::new(&env, &token_id).mint(&payer, &100);
-    let contract_id = env.register(EscrowContract, (soroban_sdk::Vec::<Address>::new(&env),));
+    let contract_id = env.register(EscrowContract, (soroban_sdk::Vec::<Address>::new(&env), None::<Address>));
     let client = EscrowContractClient::new(&env, &contract_id);
     let id = client.create_escrow(
         &payer,
@@ -99,6 +100,7 @@ fn legacy_creation_keeps_acceptance_opt_out() {
         &releaser,
         &None,
         &false,
+        &None,
     );
     let data = client.get_escrow(&id);
     assert!(!data.requires_acceptance);
