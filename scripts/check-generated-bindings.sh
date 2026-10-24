@@ -74,7 +74,7 @@ if ! diff -u "$committed" "$generated"; then
 sdk/src/generated/contract-client.ts is out of date.
 
 The committed file does not match what stellar CLI ${pinned_version} generates
-from contracts/escrow/target/wasm32v1-none/release/docforum_escrow.wasm. Either
+from contracts/target/wasm32v1-none/release/docforum_escrow.wasm. Either
 the contract's public surface changed without regenerating the bindings, or the
 generated file was edited by hand (it must never be).
 
@@ -83,7 +83,7 @@ Regenerate it:
   cd contracts/escrow
   cargo build --target wasm32v1-none --release
   stellar contract bindings typescript \\
-    --wasm target/wasm32v1-none/release/docforum_escrow.wasm \\
+    --wasm ../target/wasm32v1-none/release/docforum_escrow.wasm \\
     --output-dir /tmp/escrow-bindings --overwrite
   cp /tmp/escrow-bindings/src/index.ts ../../sdk/src/generated/contract-client.ts
 

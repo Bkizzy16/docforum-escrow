@@ -69,6 +69,7 @@ fn deploys_isolated_instances_and_registers_each_integrator() {
         &first_releaser,
         &None,
         &false,
+        &None,
     );
     second_client.create_escrow(
         &second_payer,
@@ -79,6 +80,7 @@ fn deploys_isolated_instances_and_registers_each_integrator() {
         &second_releaser,
         &None,
         &false,
+        &None,
     );
 
     assert_eq!(token.balance(&first_instance), 30);
