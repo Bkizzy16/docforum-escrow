@@ -10,7 +10,7 @@
 
 ## Contract surface
 ```
-__constructor(allowed_tokens: Vec<Address>)    // immutable token allowlist; empty means allow all
+__constructor(allowed_tokens: Vec<Address>, integrator: Option<Address>)    // allowlist plus optional factory-bound integrator
 create_escrow(payer, payee, token, amount, condition_ref, releaser, refund_after, notify_payee, refund_to) -> escrow_id   // Phase E5 callback + sponsored refund destination (ADR 0009); deployed on testnet
 create_escrow_with_acceptance(..., requires_acceptance, refund_to) -> escrow_id   // optional payee acceptance gate; deployed on testnet
 accept(escrow_id, payee) -> ()   // payee-authorized, one-time acceptance before release; deployed on testnet

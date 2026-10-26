@@ -224,7 +224,8 @@ An opt-in creation method can require the payee to authorize `accept` before rel
   testnet 2026-10-20 and the SDK tests target it. Publishing the
   `sdk-v0.6.0` release tarball per ADR 0003 remains pending.
 - [x] Immutable deploy-time token allowlist (issue #36):
-  `__constructor(allowed_tokens)` stores approved addresses;
+  `__constructor(allowed_tokens, integrator)` stores approved addresses and
+  optionally binds factory-created instances to their integrator;
   `create_escrow` rejects unlisted tokens with append-only error code 7.
   An empty list preserves allow-all behavior. Tests cover listed,
   unlisted, and empty-list cases. Threat model, deployment guidance, and
