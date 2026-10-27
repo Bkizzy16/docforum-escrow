@@ -70,6 +70,8 @@ fn deploys_isolated_instances_and_registers_each_integrator() {
         &None,
         &false,
         &None,
+        &None,
+        &None,
     );
     second_client.create_escrow(
         &second_payer,
@@ -80,6 +82,8 @@ fn deploys_isolated_instances_and_registers_each_integrator() {
         &second_releaser,
         &None,
         &false,
+        &None,
+        &None,
         &None,
     );
 

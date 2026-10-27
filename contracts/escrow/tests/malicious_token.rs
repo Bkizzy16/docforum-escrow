@@ -211,6 +211,8 @@ fn create_escrow_rejects_lying_transfer() {
         &None,
         &false,
         &None,
+        &None,
+        &None,
     );
 
     assert_eq!(result, Err(Ok(Error::BalanceMismatch)));
@@ -246,6 +248,8 @@ fn create_escrow_rejects_short_delivery() {
         &releaser,
         &None,
         &false,
+        &None,
+        &None,
         &None,
     );
 
@@ -287,6 +291,8 @@ fn failed_payout_leaves_the_escrow_funded() {
         &None,
         &false,
         &None,
+        &None,
+        &None,
     );
 
     token.arm();
@@ -324,6 +330,8 @@ fn reentrant_transfer_cannot_double_release() {
         &releaser,
         &None,
         &false,
+        &None,
+        &None,
         &None,
     );
     assert_eq!(token.balance(&contract_id), 300);
@@ -382,15 +390,7 @@ fn contribute_rejects_lying_transfer() {
     let contract_id = env.register(EscrowContract, (Vec::<Address>::new(&env), None::<Address>));
     let client = EscrowContractClient::new(&env, &contract_id);
 
-    let escrow_id = pooled_id(
-        &client,
-        &env,
-        &token_id,
-        &creator,
-        &payee,
-        &releaser,
-        300,
-    );
+    let escrow_id = pooled_id(&client, &env, &token_id, &creator, &payee, &releaser, 300);
 
     let result = client.try_contribute(&escrow_id, &payer, &100);
 
@@ -420,15 +420,7 @@ fn contribute_rejects_short_delivery() {
     let contract_id = env.register(EscrowContract, (Vec::<Address>::new(&env), None::<Address>));
     let client = EscrowContractClient::new(&env, &contract_id);
 
-    let escrow_id = pooled_id(
-        &client,
-        &env,
-        &token_id,
-        &creator,
-        &payee,
-        &releaser,
-        300,
-    );
+    let escrow_id = pooled_id(&client, &env, &token_id, &creator, &payee, &releaser, 300);
 
     let result = client.try_contribute(&escrow_id, &payer, &100);
 
@@ -459,15 +451,7 @@ fn failed_claim_leaves_the_contribution_intact() {
     let contract_id = env.register(EscrowContract, (Vec::<Address>::new(&env), None::<Address>));
     let client = EscrowContractClient::new(&env, &contract_id);
 
-    let escrow_id = pooled_id(
-        &client,
-        &env,
-        &token_id,
-        &creator,
-        &payee,
-        &releaser,
-        300,
-    );
+    let escrow_id = pooled_id(&client, &env, &token_id, &creator, &payee, &releaser, 300);
     // Honest funding in; only the outbound payout leg is armed later.
     client.contribute(&escrow_id, &payer, &300);
     token.arm();
