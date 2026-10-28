@@ -317,6 +317,9 @@ pub enum Error {
     /// contract itself, or an amount that would overflow the fee math —
     /// see docs/adr/0010.
     InvalidFee = 35,
+    /// An outbound release transfer failed; the funded escrow remains
+    /// retryable and may still use its refund path.
+    Undeliverable = 36,
 }
 
 #[contract]
@@ -1360,7 +1363,7 @@ impl EscrowContract {
         // Effects before interactions: the state write lands before any
         // token call, so a re-entrant token cannot see a still-`Funded`
         // escrow (threat model T4).
-        data.status = settled;
+        data.status = settled.clone();
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(escrow_id), data);
@@ -1372,12 +1375,30 @@ impl EscrowContract {
         Self::sub_liability(env, &data.token, data.amount)?;
 
         let token_client = token::Client::new(env, &data.token);
-        if let Some(recipient) = fee_recipient {
-            if fee > 0 {
-                token_client.transfer(&env.current_contract_address(), &recipient, &fee);
+        if settled == EscrowStatus::Released {
+            if let Some(recipient) = fee_recipient {
+                if fee > 0 {
+                    let transfer = token_client.try_transfer(
+                        &env.current_contract_address(),
+                        &recipient,
+                        &fee,
+                    );
+                    if !matches!(transfer, Ok(Ok(()))) {
+                        return Err(Error::Undeliverable);
+                    }
+                }
             }
+            let transfer = token_client.try_transfer(
+                &env.current_contract_address(),
+                &destination,
+                &payout,
+            );
+            if !matches!(transfer, Ok(Ok(()))) {
+                return Err(Error::Undeliverable);
+            }
+        } else {
+            token_client.transfer(&env.current_contract_address(), &destination, &payout);
         }
-        token_client.transfer(&env.current_contract_address(), &destination, &payout);
         if notify_payee {
             // The callback reports what the payee actually received — gross
             // minus any protocol fee — not the gross escrowed amount.
